@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  fileName    String
+  fileType    String
+  textContent String @db.Text
+  
+  embedding   Json?
+  imagePath   String?
+  
+  jobId       String
+  status      String @default("processing")
+  
+  @@index([jobId])
+  @@index([status])
+}
