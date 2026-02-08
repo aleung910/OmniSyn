@@ -16,37 +16,56 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'Worker is running! 🚀' });
+  res.json({ status: 'Worker is running' });
 });
 
 app.post('/process', async (req, res) => {
   try {
     const { jobID, files } = req.body;
-    
-    console.log(`\n Received job ${jobID} with ${files.length} file(s)`);
-    
+        
     if (!jobID || !files || files.length === 0) {
       return res.status(400).json({ error: 'Missing jobID or files' });
     }
 
-    for (const file of files) {      
+    res.json({ 
+      success: true,
+      jobID,
+      filesProcessed: files.length 
+    });
+
+    for (const file of files) {
+      console.log(`\nProcessing: ${file.name}`);
+      
       try {
-        // Extract text from image (OCR)
+        console.log('🔍 Step 1: Running OCR...');
         const extractedText = await extractTextFromImage(file.data);
+        console.log(` Extracted: "${extractedText.substring(0, 100)}..."`);
         
-        // Create embedding based on what we found
         let embedding: number[];
         
         if (extractedText.length > 20) {
+          const { generateTextEmbedding } = await import('./processors/textEmbeddings.js');
           embedding = await generateTextEmbedding(extractedText);
         } else {
+          const { generateImageEmbedding } = await import('./processors/imageEmbeddings.js');
           embedding = await generateImageEmbedding(file.data);
         }
         
-        await prisma.note.updateMany({
+        const noteToUpdate = await prisma.note.findFirst({
           where: {
             jobId: jobID,
-            fileName: file.name
+            fileName: file.name,
+            status: 'processing'
+          }
+        });
+
+        if (!noteToUpdate) {
+          continue;
+        }
+
+        await prisma.note.update({
+          where: {
+            id: noteToUpdate.id 
           },
           data: {
             textContent: extractedText,
@@ -54,39 +73,58 @@ app.post('/process', async (req, res) => {
             status: 'completed'
           }
         });
-                
+        
+        console.log(`${file.name} is now searchable!`);
+        
       } catch (fileError) {
         
-        await prisma.note.updateMany({
+        const failedNote = await prisma.note.findFirst({
           where: {
             jobId: jobID,
-            fileName: file.name
-          },
-          data: {
-            status: 'failed',
-            textContent: `Error: ${fileError instanceof Error ? fileError.message : 'Processing failed'}`
+            fileName: file.name,
+            status: 'processing'
           }
         });
+
+        if (failedNote) {
+          await prisma.note.update({
+            where: { id: failedNote.id },
+            data: {
+              status: 'failed',
+              textContent: `Error: ${fileError instanceof Error ? fileError.message : 'Processing failed'}`
+            }
+          });
+        }
       }
     }
     
     console.log(`\n Job ${jobID} complete`);
     
-    res.json({ 
-      success: true,
-      jobID,
-      filesProcessed: files.length 
-    });
+  } catch (error) {
+    console.error('Worker error:', error);
+  }
+});
+
+app.post('/embed', async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    const { generateTextEmbedding } = await import('./processors/textEmbeddings.js');
+    const embedding = await generateTextEmbedding(text);
+        
+    res.json({ embedding });
     
   } catch (error) {
-    res.status(500).json({ 
-      error: 'Processing failed',
+    res.status(500).json({
+      error: 'Embedding generation failed',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🔧 Worker running on http://localhost:${PORT}`);
-  console.log(`🧠 AI models will load on first request`);
 });
