@@ -1,4 +1,5 @@
 'use client';
+
 import { useState } from 'react';
 
 export default function Home() {
@@ -8,6 +9,10 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  const [chatMessage, setChatMessage] = useState<string>('');
+  const [chatResponse, setChatResponse] = useState<any>(null);
+  const [chatLoading, setChatLoading] = useState(false);
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -54,20 +59,41 @@ export default function Home() {
     }
   };
 
+  const handleChat = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setChatLoading(true);
+    setChatResponse(null);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: chatMessage })
+      });
+      
+      const data = await response.json();
+      setChatResponse(data);
+    } catch (error) {
+      setChatResponse({
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '36px', marginBottom: '40px' }}>
         Multimodal Learning Assistant
       </h1>
 
+      {/* Upload Section */}
       <div style={{ marginBottom: '60px', padding: '20px', border: '2px solid #eee', borderRadius: '8px' }}>
         <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>📤 Upload Documents</h2>
         
         <form onSubmit={handleUpload} style={{ marginBottom: '20px' }}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-              Upload Images or PDFs
-            </label>
             <input
               type="file"
               name="files"
@@ -93,8 +119,7 @@ export default function Home() {
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: uploadLoading ? 'not-allowed' : 'pointer',
-              fontSize: '16px'
+              cursor: uploadLoading ? 'not-allowed' : 'pointer'
             }}
           >
             {uploadLoading ? 'Uploading...' : 'Upload'}
@@ -107,26 +132,101 @@ export default function Home() {
             padding: '16px',
             borderRadius: '4px',
             overflow: 'auto',
-            fontSize: '14px'
+            fontSize: '12px'
           }}>
             {uploadResult}
           </pre>
         )}
       </div>
 
+      <div style={{ marginBottom: '60px', padding: '20px', border: '2px solid #ecececff', borderRadius: '8px', backgroundColor: '#000000ff' }}>
+        <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>💬 Chat with Your Notes</h2>
+        
+        <form onSubmit={handleChat} style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <input
+              type="text"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              placeholder="Ask a question about your notes... (e.g., 'What is photosynthesis?')"
+              style={{ 
+                display: 'block',
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #ffffffff',
+                borderRadius: '4px',
+                fontSize: '16px'
+              }}
+              required
+            />
+          </div>
+          
+          <button
+            type="submit"
+            disabled={chatLoading}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: chatLoading ? '#999' : '#10a37f',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: chatLoading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {chatLoading ? 'Thinking...' : 'Ask Claude'}
+          </button>
+        </form>
+
+        {chatResponse && (
+          <div>
+            {chatResponse.error ? (
+              <div style={{ color: 'red', padding: '16px', backgroundColor: '#fee', borderRadius: '4px' }}>
+                Error: {chatResponse.error}
+              </div>
+            ) : (
+              <div>
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  border: '1px solid #4c5c58ff'
+                }}>
+                  <strong style={{ display: 'block', marginBottom: '12px', color: '#10a37f' }}>
+                    Claude's Answer:
+                  </strong>
+                  <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                    {chatResponse.response}
+                  </p>
+                </div>
+
+                {chatResponse.sources && (
+                  <div style={{ fontSize: '14px', color: '#666' }}>
+                    <strong>Sources used:</strong>
+                    {chatResponse.sources.map((s: any, i: number) => (
+                      <span key={i}>
+                        {' '}{s.fileName} ({s.similarity}% match){i < chatResponse.sources.length - 1 ? ',' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Search Section */}
       <div style={{ padding: '20px', border: '2px solid #eee', borderRadius: '8px' }}>
         <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>🔍 Search Your Notes</h2>
         
         <form onSubmit={handleSearch} style={{ marginBottom: '20px' }}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-              Ask a question or search for topics
-            </label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search within notes"
+              placeholder="e.g., pendulum equations, photosynthesis"
               style={{ 
                 display: 'block',
                 width: '100%',
@@ -144,12 +244,11 @@ export default function Home() {
             disabled={searchLoading}
             style={{
               padding: '10px 20px',
-              backgroundColor: searchLoading ? '#999' : '#10a37f',
+              backgroundColor: searchLoading ? '#999' : '#0070f3',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: searchLoading ? 'not-allowed' : 'pointer',
-              fontSize: '16px'
+              cursor: searchLoading ? 'not-allowed' : 'pointer'
             }}
           >
             {searchLoading ? 'Searching...' : 'Search'}
@@ -164,12 +263,12 @@ export default function Home() {
               </div>
             ) : searchResults.results?.length === 0 ? (
               <div style={{ padding: '16px', backgroundColor: '#fef3c7', borderRadius: '4px' }}>
-                No results found. Try uploading some documents first!
+                No results found.
               </div>
             ) : (
               <div>
                 <p style={{ marginBottom: '16px', fontWeight: '500' }}>
-                  Found {searchResults.results?.length} results (searched {searchResults.total} notes)
+                  Found {searchResults.results?.length} results
                 </p>
                 
                 {searchResults.results?.map((result: any, idx: number) => (
@@ -187,7 +286,7 @@ export default function Home() {
                       <strong>{result.fileName}</strong>
                       <span style={{
                         padding: '4px 8px',
-                        backgroundColor: '#10a37f',
+                        backgroundColor: '#0070f3',
                         color: 'white',
                         borderRadius: '4px',
                         fontSize: '12px'

@@ -26,7 +26,6 @@ export async function extractTextFromImage(base64Image: string): Promise<string>
     
     const enhancedMetadata = await sharp(enhanced).metadata();
     
-    // Run Tesseract OCR
     const result = await Tesseract.recognize(enhanced, 'eng', {
       logger: (m) => {
         if (m.status === 'recognizing text') {
@@ -40,17 +39,10 @@ export async function extractTextFromImage(base64Image: string): Promise<string>
     
     console.log(`Extracted ${text.length} characters (confidence: ${confidence.toFixed(1)}%)`);
     
-    // Show preview of extracted text
-    if (text.length > 100) {
-      console.log(`📄 Preview: "${text.substring(0, 100)}..."`);
-    } else {
-      console.log(`📄 Full text: "${text}"`);
-    }
-    
     return text || 'No text detected';
     
   } catch (error) {
-    console.error('❌ OCR Error:', error);
+    console.error('OCR Error:', error);
     return 'OCR failed';
   }
 }
