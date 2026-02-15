@@ -1,14 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  webpack: (config) => {
-    config.resolve.alias = {
-        ...config.resolve.alias,
-        "sharp$": false,
-        "onnxruntime-node$": false,
-    };
-    return config;
-  },
+  output: 'standalone', 
+  serverExternalPackages: ['@prisma/client', 'tesseract.js', 'sharp'],
 };
 
 export default nextConfig;

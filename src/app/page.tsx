@@ -1,308 +1,428 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+
+type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Array<{ fileName: string; similarity: number }>;
+};
 
 export default function Home() {
-  const [uploadResult, setUploadResult] = useState<string>('');
-  const [uploadLoading, setUploadLoading] = useState(false);
-  
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [chatMessage, setChatMessage] = useState<string>('');
-  const [chatResponse, setChatResponse] = useState<any>(null);
-  const [chatLoading, setChatLoading] = useState(false);
+  //auto-scroll chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setUploadLoading(true);
-    setUploadResult('Uploading...');
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const formData = new FormData(e.currentTarget);
-    
+    setUploading(true);
+    setUploadStatus('Uploading...');
+
+    const formData = new FormData();
+    Array.from(files).forEach(file => formData.append('files', file));
+
     try {
       const response = await fetch('/api/ingest', {
         method: 'POST',
         body: formData
       });
-      
+
       const data = await response.json();
-      setUploadResult(JSON.stringify(data, null, 2));
+      setUploadStatus(`Uploaded ${files.length} file(s)`);
+      
+      setTimeout(() => setUploadStatus(''), 3000);
     } catch (error) {
-      setUploadResult(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setUploadStatus('Upload failed');
     } finally {
-      setUploadLoading(false);
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleSearch = async (e: React.FormEvent<HTMLFormElement>) => {
+  // Handle chat message
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSearchLoading(true);
-    setSearchResults(null);
+    if (!input.trim() || chatLoading) return;
 
+    const userMessage = input.trim();
+    setInput('');
+    
+    // Add user message
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage })
+      });
+
+      const data = await response.json();
+      
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response || data.error || 'No response',
+        sources: data.sources
+      }]);
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Failed to get response'
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setSearchLoading(true);
     try {
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery, limit: 5 })
       });
-      
+
       const data = await response.json();
       setSearchResults(data);
     } catch (error) {
-      setSearchResults({
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      setSearchResults({ error: 'Search failed' });
     } finally {
       setSearchLoading(false);
     }
   };
 
-  const handleChat = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setChatLoading(true);
-    setChatResponse(null);
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: chatMessage })
-      });
-      
-      const data = await response.json();
-      setChatResponse(data);
-    } catch (error) {
-      setChatResponse({
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
   return (
-    <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '36px', marginBottom: '40px' }}>
-        Multimodal Learning Assistant
-      </h1>
-
-      {/* Upload Section */}
-      <div style={{ marginBottom: '60px', padding: '20px', border: '2px solid #eee', borderRadius: '8px' }}>
-        <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>📤 Upload Documents</h2>
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#000',
+      color: '#fff',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      {/* Header */}
+      <header style={{
+        borderBottom: '1px solid #333',
+        padding: '16px 24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <h1 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>
+          OmniSyn - Multimodal Learning Assistant
+        </h1>
         
-        <form onSubmit={handleUpload} style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <input
-              type="file"
-              name="files"
-              multiple
-              accept="image/*,application/pdf"
-              style={{ 
-                display: 'block',
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #ccc',
-                borderRadius: '4px'
-              }}
-              required
-            />
-          </div>
-          
-          <button
-            type="submit"
-            disabled={uploadLoading}
+        <div style={{ position: 'relative' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            onChange={handleUpload}
+            style={{ display: 'none' }}
+            id="file-upload"
+          />
+          <label
+            htmlFor="file-upload"
             style={{
-              padding: '10px 20px',
-              backgroundColor: uploadLoading ? '#999' : '#0070f3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: uploadLoading ? 'not-allowed' : 'pointer'
+              cursor: uploading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              border: '1px solid #fff',
+              borderRadius: '6px',
+              backgroundColor: uploading ? '#333' : 'transparent',
+              transition: 'all 0.2s'
             }}
           >
-            {uploadLoading ? 'Uploading...' : 'Upload'}
-          </button>
-        </form>
+            <span style={{ fontSize: '20px' }}>+</span>
+            <span>{uploading ? 'Uploading...' : 'Upload'}</span>
+          </label>
+          {uploadStatus && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: '8px',
+              padding: '8px 12px',
+              backgroundColor: '#1a1a1a',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              fontSize: '14px',
+              whiteSpace: 'nowrap'
+            }}>
+              {uploadStatus}
+            </div>
+          )}
+        </div>
+      </header>
 
-        {uploadResult && (
-          <pre style={{
-            backgroundColor: '#f5f5f5',
+      {/* Main Content */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '2fr 1fr',
+        gap: '24px',
+        padding: '24px',
+        height: 'calc(100vh - 73px)'
+      }}>
+        
+        {/* Chat Section */}
+        <div style={{
+          border: '1px solid #333',
+          borderRadius: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          {/* Chat Header */}
+          <div style={{
             padding: '16px',
-            borderRadius: '4px',
-            overflow: 'auto',
-            fontSize: '12px'
+            borderBottom: '1px solid #333',
+            fontWeight: '600'
           }}>
-            {uploadResult}
-          </pre>
-        )}
-      </div>
-
-      <div style={{ marginBottom: '60px', padding: '20px', border: '2px solid #ecececff', borderRadius: '8px', backgroundColor: '#000000ff' }}>
-        <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>💬 Chat with Your Notes</h2>
-        
-        <form onSubmit={handleChat} style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <input
-              type="text"
-              value={chatMessage}
-              onChange={(e) => setChatMessage(e.target.value)}
-              placeholder="Ask a question about your notes... (e.g., 'What is photosynthesis?')"
-              style={{ 
-                display: 'block',
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #ffffffff',
-                borderRadius: '4px',
-                fontSize: '16px'
-              }}
-              required
-            />
+            💬 Chat with Your Notes
           </div>
-          
-          <button
-            type="submit"
-            disabled={chatLoading}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: chatLoading ? '#999' : '#10a37f',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: chatLoading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {chatLoading ? 'Thinking...' : 'Ask Claude'}
-          </button>
-        </form>
 
-        {chatResponse && (
-          <div>
-            {chatResponse.error ? (
-              <div style={{ color: 'red', padding: '16px', backgroundColor: '#fee', borderRadius: '4px' }}>
-                Error: {chatResponse.error}
+          {/* Messages */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            {messages.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                color: '#666',
+                marginTop: '40px'
+              }}>
+                <p style={{ fontSize: '16px', marginBottom: '8px' }}>No messages yet</p>
+                <p style={{ fontSize: '14px' }}>Upload some notes and ask a question!</p>
               </div>
             ) : (
-              <div>
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: 'white',
-                  borderRadius: '8px',
-                  marginBottom: '16px',
-                  border: '1px solid #4c5c58ff'
-                }}>
-                  <strong style={{ display: 'block', marginBottom: '12px', color: '#10a37f' }}>
-                    Claude's Answer:
-                  </strong>
-                  <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                    {chatResponse.response}
-                  </p>
-                </div>
-
-                {chatResponse.sources && (
-                  <div style={{ fontSize: '14px', color: '#666' }}>
-                    <strong>Sources used:</strong>
-                    {chatResponse.sources.map((s: any, i: number) => (
-                      <span key={i}>
-                        {' '}{s.fileName} ({s.similarity}% match){i < chatResponse.sources.length - 1 ? ',' : ''}
-                      </span>
-                    ))}
+              messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    maxWidth: '80%'
+                  }}
+                >
+                  <div style={{
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    backgroundColor: msg.role === 'user' ? '#fff' : '#1a1a1a',
+                    color: msg.role === 'user' ? '#000' : '#fff',
+                    border: `1px solid ${msg.role === 'user' ? '#fff' : '#333'}`
+                  }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                      {msg.content}
+                    </div>
+                    
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div style={{
+                        marginTop: '12px',
+                        paddingTop: '12px',
+                        borderTop: '1px solid #333',
+                        fontSize: '12px',
+                        color: '#888'
+                      }}>
+                        Sources: {msg.sources.map((s, i) => (
+                          <span key={i}>
+                            {s.fileName} ({s.similarity}%)
+                            {i < msg.sources!.length - 1 ? ', ' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              ))
+            )}
+            
+            {chatLoading && (
+              <div style={{
+                alignSelf: 'flex-start',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: '#1a1a1a',
+                border: '1px solid #333'
+              }}>
+                <span style={{ opacity: 0.6 }}>Thinking...</span>
               </div>
             )}
+            
+            <div ref={messagesEndRef} />
           </div>
-        )}
-      </div>
 
-      {/* Search Section */}
-      <div style={{ padding: '20px', border: '2px solid #eee', borderRadius: '8px' }}>
-        <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>🔍 Search Your Notes</h2>
-        
-        <form onSubmit={handleSearch} style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '16px' }}>
+          {/* Input */}
+          <form onSubmit={handleSendMessage} style={{
+            padding: '16px',
+            borderTop: '1px solid #333',
+            display: 'flex',
+            gap: '12px'
+          }}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask a question..."
+              disabled={chatLoading}
+              style={{
+                flex: 1,
+                padding: '12px',
+                backgroundColor: '#000',
+                border: '1px solid #fff',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '14px',
+                outline: 'none'
+              }}
+            />
+            <button
+              type="submit"
+              disabled={chatLoading || !input.trim()}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: chatLoading || !input.trim() ? '#333' : '#fff',
+                color: chatLoading || !input.trim() ? '#666' : '#000',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: chatLoading || !input.trim() ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              Send
+            </button>
+          </form>
+        </div>
+
+        {/* Search Section */}
+        <div style={{
+          border: '1px solid #333',
+          borderRadius: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          {/* Search Header */}
+          <div style={{
+            padding: '16px',
+            borderBottom: '1px solid #333',
+            fontWeight: '600'
+          }}>
+            🔍 Search Notes
+          </div>
+
+          {/* Search Input */}
+          <form onSubmit={handleSearch} style={{
+            padding: '16px',
+            borderBottom: '1px solid #333'
+          }}>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="e.g., pendulum equations, photosynthesis"
-              style={{ 
-                display: 'block',
+              placeholder="e.g., photosynthesis"
+              style={{
                 width: '100%',
                 padding: '12px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                fontSize: '16px'
+                backgroundColor: '#000',
+                border: '1px solid #fff',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '14px',
+                outline: 'none',
+                marginBottom: '12px'
               }}
-              required
             />
-          </div>
-          
-          <button
-            type="submit"
-            disabled={searchLoading}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: searchLoading ? '#999' : '#0070f3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: searchLoading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {searchLoading ? 'Searching...' : 'Search'}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={searchLoading}
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: searchLoading ? '#333' : '#fff',
+                color: searchLoading ? '#666' : '#000',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: searchLoading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              {searchLoading ? 'Searching...' : 'Search'}
+            </button>
+          </form>
 
-        {searchResults && (
-          <div>
-            {searchResults.error ? (
-              <div style={{ color: 'red', padding: '16px', backgroundColor: '#fee', borderRadius: '4px' }}>
-                Error: {searchResults.error}
-              </div>
-            ) : searchResults.results?.length === 0 ? (
-              <div style={{ padding: '16px', backgroundColor: '#fef3c7', borderRadius: '4px' }}>
-                No results found.
+          {/* Results */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '16px'
+          }}>
+            {searchResults?.results?.length > 0 ? (
+              searchResults.results.map((result: any) => (
+                <div
+                  key={result.id}
+                  style={{
+                    padding: '12px',
+                    marginBottom: '12px',
+                    border: '1px solid #333',
+                    borderRadius: '6px',
+                    backgroundColor: '#1a1a1a'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    fontSize: '12px'
+                  }}>
+                    <span style={{ fontWeight: '600' }}>{result.fileName}</span>
+                    <span style={{ color: '#888' }}>
+                      {(result.similarity * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#ccc', lineHeight: '1.4' }}>
+                    {result.textContent}
+                  </div>
+                </div>
+              ))
+            ) : searchResults?.error ? (
+              <div style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>
+                {searchResults.error}
               </div>
             ) : (
-              <div>
-                <p style={{ marginBottom: '16px', fontWeight: '500' }}>
-                  Found {searchResults.results?.length} results
-                </p>
-                
-                {searchResults.results?.map((result: any, idx: number) => (
-                  <div
-                    key={result.id}
-                    style={{
-                      padding: '16px',
-                      marginBottom: '12px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      backgroundColor: idx === 0 ? '#f0f9ff' : 'white'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <strong>{result.fileName}</strong>
-                      <span style={{
-                        padding: '4px 8px',
-                        backgroundColor: '#0070f3',
-                        color: 'white',
-                        borderRadius: '4px',
-                        fontSize: '12px'
-                      }}>
-                        {(result.similarity * 100).toFixed(1)}% match
-                      </span>
-                    </div>
-                    <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>
-                      {result.textContent}
-                    </p>
-                  </div>
-                ))}
+              <div style={{ color: '#666', textAlign: 'center', marginTop: '40px' }}>
+                No results yet
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
