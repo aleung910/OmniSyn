@@ -14,7 +14,7 @@ OCR extracting text automatically -> CLIP embeddings for semantic understanding 
 - Dockerized microservices architecture
 - Vector similarity search with PostgreSQL
 
-![gif]([https://github.com/aleung910/OmniSyn/blob/main/omnisyngif.gif])
+![OmniSyn Demo](https://github.com/aleung910/OmniSyn/raw/main/omnisyngif.gif)
 ```text
 
 OmniSyn: RAG-based OCR & Search Architecture
