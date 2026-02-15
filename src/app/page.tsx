@@ -156,7 +156,7 @@ export default function Home() {
             }}
           >
             <span style={{ fontSize: '20px' }}>+</span>
-            <span>{uploading ? 'Uploading...' : 'Upload'}</span>
+            <span>{uploading ? 'Uploading...' : 'Upload '}</span>
           </label>
           {uploadStatus && (
             <div style={{
@@ -177,7 +177,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '2fr 1fr',
@@ -186,7 +186,7 @@ export default function Home() {
         height: 'calc(100vh - 73px)'
       }}>
         
-        {/* Chat Section */}
+        {/* Chat */}
         <div style={{
           border: '1px solid #333',
           borderRadius: '8px',
@@ -194,13 +194,13 @@ export default function Home() {
           flexDirection: 'column',
           overflow: 'hidden'
         }}>
-          {/* Chat Header */}
+          {/* Chat header */}
           <div style={{
             padding: '16px',
             borderBottom: '1px solid #333',
             fontWeight: '600'
           }}>
-            💬 Chat with Your Notes
+            Ask Questions for Notes
           </div>
 
           {/* Messages */}
@@ -334,7 +334,7 @@ export default function Home() {
             borderBottom: '1px solid #333',
             fontWeight: '600'
           }}>
-            🔍 Search Notes
+            Search in your Notes
           </div>
 
           {/* Search Input */}
