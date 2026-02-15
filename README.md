@@ -113,6 +113,7 @@ WORKER_URL="http://worker:3001"
 # Build and start all services
 docker-compose up --build
 # App will be available at http://localhost:3000
+```
 
 ## Future Enhancements
 - User authentication with NextAuth
