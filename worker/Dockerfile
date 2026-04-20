@@ -1,26 +1,39 @@
 FROM node:20-slim
 
-#OpenSSL
+# System deps: OpenSSL for Prisma, libvips for sharp, python/make for native modules
 RUN apt-get update && \
-    apt-get install -y openssl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y \
+      openssl \
+      ca-certificates \
+      libvips-dev \
+      python3 \
+      make \
+      g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-#Prisma schema from root
+# Prisma schema (we're building from inside worker/ so prisma/ is right here)
 COPY prisma ./prisma/
 
-#worker package files
-COPY worker/package*.json ./
-
+# Dependencies first (better Docker layer caching — only reinstalls if package.json changes)
+COPY package*.json ./
 RUN npm ci
-#worker source
-COPY worker/src ./src/
-COPY worker/tsconfig.json ./
 
-#Generate Prisma Client
+# Source and TypeScript config
+COPY src ./src/
+COPY tsconfig.json ./
+
+# Tesseract trained data (lives in worker/ root)
+COPY eng.traineddata ./
+
+# Generate Prisma client
 RUN npx prisma generate
+
+# Compile TypeScript → dist/
+RUN npx tsc
 
 EXPOSE 3001
 
-CMD ["npm", "run", "dev"]
+# Run compiled JS — not tsx watch (that's for local dev only)
+CMD ["node", "dist/server.js"]
