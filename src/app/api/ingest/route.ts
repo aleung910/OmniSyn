@@ -5,9 +5,10 @@ const WORKER_URL = process.env.WORKER_URL || "http://localhost:3001";
 
 export async function POST(req: Request) {
   try {
-    
     const formData = await req.formData();
     const files: File[] = formData.getAll('files').filter(value => value instanceof File);
+    
+    
     if (files.length === 0) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       })
     );
 
-    console.log(`💾 Creating ${filesData.length} database records...`);
+    console.log(`Creating ${filesData.length} database records...`);
     await Promise.all(
       filesData.map(async (file) => {
         await prisma.note.create({
@@ -42,28 +43,23 @@ export async function POST(req: Request) {
       })
     );
 
-    try {
+      try {
       const workerResponse = await fetch(`${WORKER_URL}/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobID,
-          files: filesData
-        })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobID, files: filesData }),
       });
-
+ 
       if (!workerResponse.ok) {
         const errorText = await workerResponse.text();
-        console.error('Worker error:', errorText);
-        throw new Error(`Worker returned ${workerResponse.status}`);
+        console.error("Worker error:", errorText);
+        // Don't throw — the worker processes async, the job is already queued
       }
-
-      const workerResult = await workerResponse.json();
-
     } catch (workerError) {
-      // Don't fail the request - worker will process eventually
+      // Worker is async, don't fail the upload request
+      console.error("Could not reach worker:", workerError);
     }
-
+ 
     return NextResponse.json({ 
       message: "Processing started", 
       jobID,

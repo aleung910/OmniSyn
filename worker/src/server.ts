@@ -40,67 +40,64 @@ app.post('/process', async (req, res) => {
         console.log('🔍 Step 1: Running OCR...');
         const extractedText = await extractTextFromImage(file.data);
         console.log(` Extracted: "${extractedText.substring(0, 100)}..."`);
-        
-        let embedding: number[];
-        
-        if (extractedText.length > 20) {
-          const { generateTextEmbedding } = await import('./processors/textEmbeddings.js');
-          embedding = await generateTextEmbedding(extractedText);
-        } else {
-          const { generateImageEmbedding } = await import('./processors/imageEmbeddings.js');
-          embedding = await generateImageEmbedding(file.data);
-        }
-        
+      
         const noteToUpdate = await prisma.note.findFirst({
-          where: {
-            jobId: jobID,
-            fileName: file.name,
-            status: 'processing'
-          }
+          where: { jobId: jobID, fileName: file.name, status: 'processing' },
         });
 
         if (!noteToUpdate) {
+          console.warn(` No pending note found for ${file.name}, skipping.`);
           continue;
         }
-
-        await prisma.note.update({
-          where: {
-            id: noteToUpdate.id 
-          },
-          data: {
-            textContent: extractedText,
-            embedding: embedding,
-            status: 'completed'
-          }
-        });
         
-        console.log(`${file.name} is now searchable!`);
-        
-      } catch (fileError) {
-        
+        if(extractedText.length > 20){
+          console.log('📝 Step 2: Generating text embedding (384-dim)...');
+          const embedding = await generateTextEmbedding(extractedText);
+          const vectorString = `[${embedding.join(',')}]`;
+            await prisma.$executeRaw`
+                      UPDATE "Note"
+                      SET
+                        "textContent"   = ${extractedText},
+                        "textEmbedding" = ${vectorString}::vector,
+                        status          = 'completed'
+                      WHERE id = ${noteToUpdate.id}
+                    `;
+           console.log(`✅ ${file.name} — text embedding stored (384-dim)`);
+        }
+        else{
+          console.log('🖼️  Step 2: Generating image embedding (512-dim)...');
+          const embedding = await generateImageEmbedding(file.data);
+          const vectorString = `[${embedding.join(',')}]`;
+          await prisma.$executeRaw`
+            UPDATE "Note"
+            SET
+              "textContent"    = ${extractedText},
+              "imageEmbedding" = ${vectorString}::vector,
+              status           = 'completed'
+            WHERE id = ${noteToUpdate.id}
+          `;
+          console.log(`✅ ${file.name} — image embedding stored (512-dim)`);
+        }
+      }
+      catch(fileError){
+        console.error(`   Error processing ${file.name}:`, fileError);
         const failedNote = await prisma.note.findFirst({
-          where: {
-            jobId: jobID,
-            fileName: file.name,
-            status: 'processing'
-          }
-        });
+              where: { jobId: jobID, fileName: file.name, status: 'processing' },
+            });
 
         if (failedNote) {
           await prisma.note.update({
             where: { id: failedNote.id },
             data: {
               status: 'failed',
-              textContent: `Error: ${fileError instanceof Error ? fileError.message : 'Processing failed'}`
-            }
+              textContent: `Error: ${fileError instanceof Error ? fileError.message : 'Processing failed'}`,
+            },
           });
         }
       }
     }
-    
-    console.log(`\n Job ${jobID} complete`);
-    
-  } catch (error) {
+    console.log(`\n✅ Job ${jobID} complete`);
+ } catch (error) {
     console.error('Worker error:', error);
   }
 });
@@ -127,4 +124,5 @@ app.post('/embed', async (req, res) => {
 });
 
 app.listen(PORT, () => {
+    console.log(` Worker running on port ${PORT}`);
 });

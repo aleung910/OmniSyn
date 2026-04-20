@@ -16,7 +16,8 @@ model Note {
   fileType    String
   textContent String @db.Text
   
-  embedding   Json?
+  textEmbedding    Unsupported("vector(384)")?
+  imageEmbedding   Unsupported("vector(512)")?
   imagePath   String?
   
   jobId       String
